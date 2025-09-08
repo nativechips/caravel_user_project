@@ -18,18 +18,14 @@ import yaml
 
 
 @click.command()
-@click.argument('caravel_root', type=click.Path(exists=True))
-@click.argument('mcw_root', type=click.Path(exists=True))
-@click.argument('pdk_root', type=click.Path(exists=True))
-@click.argument('pdk')
 @click.argument('user_project_root', type=click.Path(exists=True))
-def update_design_info(caravel_root, mcw_root, pdk_root, pdk, user_project_root):
+def update_design_info(user_project_root):
     data = {
-        'CARAVEL_ROOT': caravel_root,
-        'MCW_ROOT': mcw_root,
+        'CARAVEL_ROOT': "/nc/templates/caravel",
+        'MCW_ROOT': "/nc/templates/mgmt_core_wrapper",
         'USER_PROJECT_ROOT': user_project_root,
-        'PDK_ROOT': pdk_root,
-        'PDK': pdk,
+        'PDK_ROOT': "/nc/apps/pdk",
+        'PDK': "sky130A",
         'clk': 25,
         'caravan': False,
         'emailto': [None]
@@ -41,10 +37,3 @@ def update_design_info(caravel_root, mcw_root, pdk_root, pdk, user_project_root)
 
 if __name__ == "__main__":
     update_design_info()
-
-# paths = EnvironmentPaths("/home/rady/caravel/caravel_orginal/caravel/",
-# "/home/rady/caravel/caravel_orginal/caravel_mgmt_soc_litex/",
-# "/home/rady/caravel/files4vcs/pdk","sky130A",
-# "/home/rady/caravel/swift/caravel_user_project/")
-
-# WriteDesignInfo("/home/Marwan/caravel/swift/caravel-dynamic-sims/cocotb/",paths,Emailto=["mostafa.rady@efabless.com"])
