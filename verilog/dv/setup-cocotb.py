@@ -26,7 +26,7 @@ def update_design_info(user_project_root):
         'USER_PROJECT_ROOT': user_project_root,
         'PDK_ROOT': "/nc/apps/pdk",
         'PDK': "sky130A",
-        'clk': 25,
+        'clk_period_ns': 25,
         'caravan': False,
         'emailto': [None]
     }
