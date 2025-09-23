@@ -34,6 +34,11 @@ def update_design_info(user_project_root):
     with open(f'{user_project_root}/verilog/dv/cocotb/design_info.yaml', 'w') as file:
         yaml.dump(data, file)
 
+    with open(f'{user_project_root}/verilog/dv/cocotb/design_info.yaml', 'w') as file:
+        yaml_str = yaml.dump(data)
+        yaml_str = yaml_str.replace("clk_period_ns: 25",
+                                    "clk_period_ns: 25   # Clock period in nanoseconds")
+        file.write(yaml_str)
 
 if __name__ == "__main__":
     update_design_info()
