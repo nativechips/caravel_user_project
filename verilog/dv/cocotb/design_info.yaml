@@ -4,6 +4,6 @@ PDK: sky130A
 PDK_ROOT: /nc/apps/pdk
 USER_PROJECT_ROOT: /workspace/caravel_user_project
 caravan: false
-clk: 25
+clk_period_ns: 25
 emailto:
 - null
