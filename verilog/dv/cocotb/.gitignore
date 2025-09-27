@@ -1,4 +1,4 @@
-sim/ 
-*.log
+#sim/ 
+#*.log
 *.vcd 
 *.pyc
