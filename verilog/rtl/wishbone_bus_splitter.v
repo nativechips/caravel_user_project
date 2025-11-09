@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 [Organization Name]
 //
@@ -84,92 +86,119 @@ module wishbone_bus_splitter #(
     parameter NUM_PERIPHERALS   = 10,
     parameter ADDR_WIDTH        = 32,
     parameter DATA_WIDTH        = 32,
-    parameter SEL_WIDTH         = DATA_WIDTH / 8,
+    parameter SEL_WIDTH         = (DATA_WIDTH / 8),
     parameter ADDR_SEL_LOW_BIT  = 16  // Base bit for peripheral selection
 )(
     // Master Interface
-    input  logic [ADDR_WIDTH-1:0] m_wb_adr_i,
-    input  logic [DATA_WIDTH-1:0] m_wb_dat_i,
-    output logic [DATA_WIDTH-1:0] m_wb_dat_o,
-    input  logic                  m_wb_we_i,
-    input  logic [SEL_WIDTH-1:0]  m_wb_sel_i,
-    input  logic                  m_wb_cyc_i,
-    input  logic                  m_wb_stb_i,
-    output logic                  m_wb_ack_o,
-    output logic                  m_wb_err_o,  // <-- ADDED
+    input  wire [ADDR_WIDTH-1:0] m_wb_adr_i,
+    input  wire [DATA_WIDTH-1:0] m_wb_dat_i,
+    output wire [DATA_WIDTH-1:0] m_wb_dat_o,
+    input  wire                  m_wb_we_i,
+    input  wire [SEL_WIDTH-1:0]  m_wb_sel_i,
+    input  wire                  m_wb_cyc_i,
+    input  wire                  m_wb_stb_i,
+    output wire                  m_wb_ack_o,
+    output wire                  m_wb_err_o,
 
     // Slave Interfaces
-    output logic [NUM_PERIPHERALS-1:0]                s_wb_cyc_o,
-    output logic [NUM_PERIPHERALS-1:0]                s_wb_stb_o,
-    output logic [NUM_PERIPHERALS-1:0]                s_wb_we_o,
-    output logic [NUM_PERIPHERALS*SEL_WIDTH-1:0]      s_wb_sel_o,
-    output logic [NUM_PERIPHERALS*ADDR_WIDTH-1:0]     s_wb_adr_o,
-    output logic [NUM_PERIPHERALS*DATA_WIDTH-1:0]     s_wb_dat_o,
-    input  logic [NUM_PERIPHERALS*DATA_WIDTH-1:0]     s_wb_dat_i,
-    input  logic [NUM_PERIPHERALS-1:0]                s_wb_ack_i,
-    input  logic [NUM_PERIPHERALS-1:0]                s_wb_err_i   // <-- ADDED
+    output wire [NUM_PERIPHERALS-1:0]            s_wb_cyc_o,
+    output wire [NUM_PERIPHERALS-1:0]            s_wb_stb_o,
+    output wire [NUM_PERIPHERALS-1:0]            s_wb_we_o,
+    output wire [NUM_PERIPHERALS*SEL_WIDTH-1:0]  s_wb_sel_o,
+    output wire [NUM_PERIPHERALS*ADDR_WIDTH-1:0] s_wb_adr_o,
+    output wire [NUM_PERIPHERALS*DATA_WIDTH-1:0] s_wb_dat_o,
+    input  wire [NUM_PERIPHERALS*DATA_WIDTH-1:0] s_wb_dat_i,
+    input  wire [NUM_PERIPHERALS-1:0]            s_wb_ack_i,
+    input  wire [NUM_PERIPHERALS-1:0]            s_wb_err_i
 );
-    // Calculate number of bits needed to select N peripherals
-    localparam ADDR_SEL_WIDTH = $clog2(NUM_PERIPHERALS);
+
+    // --------- Helpers ----------
+    // Synthesizable clog2 (returns 0 for val<=1)
+    function integer clog2;
+        input integer value;
+        integer v;
+        begin
+            v = value - 1;
+            clog2 = 0;
+            while (v > 0) begin
+                v = v >> 1;
+                clog2 = clog2 + 1;
+            end
+        end
+    endfunction
+
+    // Ensure selection width is at least 1 bit to avoid zero-width vectors
+    localparam ADDR_SEL_WIDTH    = (NUM_PERIPHERALS <= 1) ? 1 : clog2(NUM_PERIPHERALS);
     localparam ADDR_SEL_HIGH_BIT = ADDR_SEL_LOW_BIT + ADDR_SEL_WIDTH - 1;
 
-    // Check for parameter errors at elaboration time
+    // Optional debug default word (all zeros to be width-agnostic)
+    localparam [DATA_WIDTH-1:0] DEBUG_WORD = {DATA_WIDTH{1'b0}};
+
+    // --------- Elaboration-time parameter checks (simulation-time) ----------
     initial begin
         if (ADDR_SEL_HIGH_BIT >= ADDR_WIDTH) begin
             $display("ERROR: ADDR_SEL bits (%0d:%0d) exceed ADDR_WIDTH (%0d)",
                      ADDR_SEL_HIGH_BIT, ADDR_SEL_LOW_BIT, ADDR_WIDTH);
             $finish;
         end
+        if (NUM_PERIPHERALS < 1) begin
+            $display("ERROR: NUM_PERIPHERALS must be >= 1");
+            $finish;
+        end
     end
 
-    // Internal signals for decoding
+    // --------- Internal signals ----------
     wire [ADDR_SEL_WIDTH-1:0] peripheral_sel;
-    wire                      valid_peripheral;
+    wire                       valid_peripheral;
 
-    // Combinatorial muxing signals
-    logic [DATA_WIDTH-1:0] dat_mux;
-    logic                  ack_mux;
-    logic                  err_mux;
+    reg  [DATA_WIDTH-1:0]      dat_mux;
+    reg                        ack_mux;
+    reg                        err_mux;
 
     // --- 1. Address Decoding ---
-    assign peripheral_sel = m_wb_adr_i[ADDR_SEL_HIGH_BIT : ADDR_SEL_LOW_BIT];
+    assign peripheral_sel  = m_wb_adr_i[ADDR_SEL_HIGH_BIT : ADDR_SEL_LOW_BIT];
     assign valid_peripheral = (peripheral_sel < NUM_PERIPHERALS);
 
-    
     // --- 2. Master-to-Slave Demultiplexing ---
     genvar g;
     generate
         for (g = 0; g < NUM_PERIPHERALS; g = g + 1) begin : gen_slave_signals
-            // CYC is broadcast to all slaves
+            // CYC is broadcast
             assign s_wb_cyc_o[g] = m_wb_cyc_i;
 
-            // STB is gated only to the selected slave
-            assign s_wb_stb_o[g] = m_wb_stb_i && valid_peripheral && (peripheral_sel == g);
-            
-            // Other signals are broadcast (slaves should ignore if STB is low)
-            assign s_wb_we_o[g]  = m_wb_we_i;
-            assign s_wb_sel_o[g*SEL_WIDTH +: SEL_WIDTH] = m_wb_sel_i;
-            assign s_wb_adr_o[g*ADDR_WIDTH +: ADDR_WIDTH] = m_wb_adr_i;
-            assign s_wb_dat_o[g*DATA_WIDTH +: DATA_WIDTH] = m_wb_dat_i;
+            // STB is gated to the selected peripheral only
+            assign s_wb_stb_o[g] = m_wb_stb_i && valid_peripheral && (peripheral_sel == g[ADDR_SEL_WIDTH-1:0]);
+
+            // Broadcast the rest (slaves ignore if STB is low)
+            assign s_wb_we_o[g] = m_wb_we_i;
+
+            assign s_wb_sel_o[(g+1)*SEL_WIDTH-1 : g*SEL_WIDTH]   = m_wb_sel_i;
+            assign s_wb_adr_o[(g+1)*ADDR_WIDTH-1 : g*ADDR_WIDTH] = m_wb_adr_i;
+            assign s_wb_dat_o[(g+1)*DATA_WIDTH-1 : g*DATA_WIDTH] = m_wb_dat_i;
         end
     endgenerate
 
     // --- 3. Slave-to-Master Multiplexing ---
-    always_comb begin
-        // Default values for an idle cycle or invalid access
-        dat_mux = 32'hDEADBEEF; // Error/debug value
+    always @* begin
+        integer sel_shift;
+        reg [NUM_PERIPHERALS*DATA_WIDTH-1:0] dat_shifted;
+
+        // Defaults (idle or invalid access)
+        dat_mux = DEBUG_WORD;
         ack_mux = 1'b0;
         err_mux = 1'b0;
 
         if (valid_peripheral) begin
-            // Valid peripheral is selected: pass its signals back
-            dat_mux = s_wb_dat_i[peripheral_sel*DATA_WIDTH +: DATA_WIDTH];
-            ack_mux = s_wb_ack_i[peripheral_sel];
-            err_mux = s_wb_err_i[peripheral_sel];
-        end 
+            sel_shift  = peripheral_sel * DATA_WIDTH;
+            dat_shifted = s_wb_dat_i >> sel_shift;
+            dat_mux    = dat_shifted[DATA_WIDTH-1:0];
+
+            ack_mux    = s_wb_ack_i[peripheral_sel];
+            err_mux    = s_wb_err_i[peripheral_sel];
+        end
         else if (m_wb_stb_i && m_wb_cyc_i) begin
-            // Access to an invalid address: generate an error
-            ack_mux = 1'b0; // ACK and ERR must be mutually exclusive
+            // Invalid address -> error response (ACK and ERR mutually exclusive)
+            ack_mux = 1'b0;
             err_mux = 1'b1;
         end
     end
