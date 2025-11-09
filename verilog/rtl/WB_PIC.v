@@ -30,7 +30,7 @@
     - All documented features tested and passing
 */
 
-module wb_pic (
+module WB_PIC (
     // Clock and Reset
     input  wire        clk,
     input  wire        rst_n,
